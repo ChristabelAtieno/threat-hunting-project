@@ -1,3 +1,10 @@
 *.tar
 extracted/
 *.pyc
+__pycache__/
+notebook/
+*.parquet
+mlruns/
+mlflow.db
+
+
