@@ -3,6 +3,27 @@ import pyarrow.parquet as pq
 import pandas as pd
 from collections import Counter
 from sklearn.preprocessing import StandardScaler
+
+# --------------------------------
+# HELPER FUNCTIONS
+# --------------------------------
+def parse_arn(arn):
+    """
+    Parse AWS ARN to extract principal type and name.
+    Example: 'arn:aws:sts::123456789:assumed-role/Level6/Level6' → ('assumed-role', 'Level6')
+    """
+    if pd.isna(arn):
+        return (None, None)
+    try:
+        # ARN format: arn:partition:service:region:account-id:resource
+        resource = arn.split(":", 5)[5]  # Get resource part
+        parts = resource.split("/")
+        principal_type = parts[0] if parts else None
+        principal_name = parts[-1] if len(parts) > 1 else parts[0] if parts else None
+        return principal_type, principal_name
+    except:
+        return (None, None)
+
 # --------------------------------
 # PREPROCESS DATA
 # --------------------------------
@@ -28,12 +49,13 @@ def clean_parquet_files(parquet_dir: str, output_dir: str, columns_to_drop: list
     os.makedirs(output_dir, exist_ok=True)
 
     if columns_to_drop is None:
-        columns_to_drop = ['userIdentity.arn','serviceEventDetails.snapshotId','managementEvent','readOnly','vpcEndpointId',
+        # Keep: userIdentity.arn, userIdentity.userName, userIdentity.accessKeyId (handled in engineer_features)
+        columns_to_drop = ['serviceEventDetails.snapshotId','managementEvent','readOnly','vpcEndpointId',
                     'userIdentity.sessionContext.sessionIssuer.userName','userIdentity.sessionContext.sessionIssuer.accountId',
                     'userIdentity.sessionContext.sessionIssuer.principalId','apiVersion','userIdentity.sessionContext.attributes.creationDate','userIdentity.sessionContext.sessionIssuer.arn',
-                    'userIdentity.sessionContext.sessionIssuer.type','sharedEventID','userIdentity.userName','resources','userIdentity.accessKeyId','userIdentity.accountId',
+                    'userIdentity.sessionContext.sessionIssuer.type','sharedEventID','resources','userIdentity.accountId',
                     'userIdentity.principalId','eventVersion','responseElements','eventCategory',
-                    'requestID','eventID','recipientAccountId','requestParameters']
+                    'requestID','eventID','recipientAccountId','awsRegion']
     
     for file in sorted(os.listdir(parquet_dir)):
         if file.endswith(".parquet"):
@@ -79,6 +101,22 @@ def engineer_features(input_dir: str, output_dir: str):
             else:
                 df['hasError'] = 0
 
+            # ---- ARN PARSING & PRINCIPAL FEATURES ----
+            if 'userIdentity.arn' in df.columns:
+                df[['principal_type', 'principal_name']] = df['userIdentity.arn'].apply(
+                    lambda x: pd.Series(parse_arn(x))
+                )
+            else:
+                df['principal_type'] = None
+                df['principal_name'] = None
+            
+
+            # ---- ACCESS KEY PRESENCE FEATURE ----
+            if 'userIdentity.accessKeyId' in df.columns:
+                df['has_access_key'] = df['userIdentity.accessKeyId'].notna().astype(int)
+            else:
+                df['has_access_key'] = 0
+
             # ---- PRESENCE FEATURES ----
             for col in presence_cols:
                 flag_name = f'has_{col.split(".")[-1]}'
@@ -89,7 +127,9 @@ def engineer_features(input_dir: str, output_dir: str):
 
             # ---- CLEANUP ----
             cols_to_drop = [col for col in ['eventTime', 'errorMessage', 'errorCode',
-                                             'userIdentity.sessionContext.attributes.mfaAuthenticated']
+                                             'userIdentity.sessionContext.attributes.mfaAuthenticated',
+                                             'userIdentity.arn', 'userIdentity.userName', 'userIdentity.accessKeyId',
+                                             'requestParameters']
                             if col in df.columns]
             df = df.drop(columns=cols_to_drop)
 
@@ -104,7 +144,7 @@ def encoding_features(input_dir: str, output_dir: str):
 
     os.makedirs(output_dir, exist_ok=True)
 
-    categorical_cols = ['eventType','awsRegion','userIdentity.type','userIdentity.invokedBy']
+    categorical_cols = ['eventType','userIdentity.type','userIdentity.invokedBy','principal_type', 'principal_name']
     freq_cols = ['userAgent','sourceIPAddress','eventName','eventSource']
 
     # ----- compute global frequencies ----

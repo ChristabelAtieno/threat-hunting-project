@@ -26,7 +26,7 @@ if __name__ == "__main__":
     #print("\nStep 4: Encoding categorical features...")
     #encoding_features("notebook/features_parquet", "notebook/clean_features_parquet")
 
-    print("\nStep 5: Preparing dataset and scaling...")
+    #print("\nStep 5: Preparing dataset and scaling...")
     df_engineered, df_scaled = prepare_dataset("notebook/clean_features_parquet")
 
     print("\nStep 6: Training Isolation Forest model...")
