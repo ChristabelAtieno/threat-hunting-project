@@ -29,6 +29,6 @@ ENV MLFLOW_TRACKING_URI=file:./mlruns
 # Expose MLflow UI port 
 EXPOSE 5000
 
-# Default command: run training pipeline
+#  run training pipeline
 CMD ["python", "main.py"]
 

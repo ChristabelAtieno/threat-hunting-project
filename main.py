@@ -14,19 +14,19 @@ if __name__ == "__main__":
 
     mlflow.set_experiment("cloudtrail_anomaly_detection")
 
-    #print("Step 1: Loading raw CloudTrail logs...")
-    #raw_dir = load_logs("notebook/cloudtrail_parquet")
+    print("Step 1: Loading raw CloudTrail logs...")
+    raw_dir = load_logs("notebook/cloudtrail_parquet")
 
-    #print("\nStep 2: Cleaning parquet files...")
-    #clean_parquet_files(raw_dir, "notebook/clean_cloudtrail_parquet")
+    print("\nStep 2: Cleaning parquet files...")
+    clean_parquet_files(raw_dir, "notebook/clean_cloudtrail_parquet")
 
-    #print("\nStep 3: Engineering features...")
-    #engineer_features("notebook/clean_cloudtrail_parquet", "notebook/features_parquet")
+    print("\nStep 3: Engineering features...")
+    engineer_features("notebook/clean_cloudtrail_parquet", "notebook/features_parquet")
 
-    #print("\nStep 4: Encoding categorical features...")
-    #encoding_features("notebook/features_parquet", "notebook/clean_features_parquet")
+    print("\nStep 4: Encoding categorical features...")
+    encoding_features("notebook/features_parquet", "notebook/clean_features_parquet")
 
-    #print("\nStep 5: Preparing dataset and scaling...")
+    print("\nStep 5: Preparing dataset and scaling...")
     df_engineered, df_scaled = prepare_dataset("notebook/clean_features_parquet")
 
     print("\nStep 6: Training Isolation Forest model...")
