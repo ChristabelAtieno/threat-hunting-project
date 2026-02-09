@@ -32,27 +32,3 @@ EXPOSE 5000
 # Default command: run training pipeline
 CMD ["python", "main.py"]
 
-
-# Build image
-#docker build -t threat-hunting:latest .
-
-# Run training pipeline
-#docker run --rm \
-  #-v $(pwd)/mlruns:/app/mlruns \
-  #-e AWS_ACCESS_KEY_ID="your-key" \
-  #-e AWS_SECRET_ACCESS_KEY="your-secret" \
-  #threat-hunting:latest
-
-# Run inference streaming
-#docker run --rm \
-  #-v $(pwd)/mlruns:/app/mlruns \
-  #-e AWS_ACCESS_KEY_ID="your-key" \
-  #-e AWS_SECRET_ACCESS_KEY="your-secret" \
-  #threat-hunting:latest \
-  #python scripts/inference.py
-
-# Run MLflow UI
-#docker run -p 5000:5000 \
-  #-v $(pwd)/mlruns:/app/mlruns \
-  #threat-hunting:latest \
-  #mlflow ui --host 0.0.0.0
