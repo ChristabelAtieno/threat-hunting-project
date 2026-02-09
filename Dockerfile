@@ -24,9 +24,9 @@ RUN mkdir -p /app/mlruns
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV MLFLOW_TRACKING_URI=file:./mlruns
-ENV AWS_REGION=us-east-1
+# ENV AWS_REGION=us-east-1
 
-# Expose MLflow UI port (optional)
+# Expose MLflow UI port 
 EXPOSE 5000
 
 # Default command: run training pipeline
