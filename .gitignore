@@ -2,9 +2,12 @@
 extracted/
 *.pyc
 __pycache__/
-notebook/
-*.parquet
 mlruns/
 mlflow.db
+*.txt
+processed_parquet/
+main1.py
+.vscode
+
 
 
