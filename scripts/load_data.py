@@ -2,13 +2,13 @@ from pathlib import Path
 import gzip
 import json
 import pandas as pd
+import dask.dataframe as dd
 
-    
 def load_data(data_path, output_path):
     
     """
     Loads the json files from the directory
-    Keeping only the relevant columns for my objectives
+    Keeping only the relevant columns and saves the data into parquet files for faster processing in the next steps
 
     Parameters
     data_path:
@@ -24,8 +24,7 @@ def load_data(data_path, output_path):
 
     TOP_FEATURES = ['userIdentity.arn','userIdentity.type','userIdentity.sessionContext.attributes.mfaAuthenticated',
                 'eventName','eventSource','sourceIPAddress','awsRegion', 'errorCode',	
-                'errorMessage','eventTime',	'requestParameters.bucketName','requestParameters.userName',
-                'recipientAccountId','userIdentity.userName', 'userIdentity.accessKeyId']
+                'errorMessage','eventTime','userIdentity.userName', 'userIdentity.accessKeyId', 'eventType', 'userIdentity.invokedBy']
     for file in data_path.glob('*.json.gz'):
         with gzip.open(file, 'rb') as f:
             data = json.load(f)
@@ -35,6 +34,7 @@ def load_data(data_path, output_path):
             df.to_parquet(output_filename, engine='pyarrow')
 
     print(f"Successfully created the parquet files in {output_path}")
+    return dd.read_parquet(output_path / "*.parquet")
 
 
 

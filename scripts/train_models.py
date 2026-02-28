@@ -1,20 +1,29 @@
 from sklearn.ensemble import IsolationForest
-import numpy as np
+#from dask_ml.ensemble import IsolationForest as DaskIsolationForest
+import dask.array as da
 import mlflow
 import mlflow.sklearn
 
-#--------------------------------------
-# ISOLATION  FOREST MODEL
-#--------------------------------------
+
 def isolation_forest_model(data):
-    # isolation forest
+    """
+    Trains an Isolation Forest model on the provided data, logs parameters and metrics to MLflow,
+    and registers the model in the MLflow Model Registry.
+
+    Parameters
+    data: 
+        A DataFrame containing the features to train the model on.
+
+    Returns
+    model: 
+        The trained Isolation Forest model.
+    """
     model = IsolationForest(n_estimators=300,
                             max_samples='auto', 
                             contamination=0.01, 
                             random_state=42, 
                             n_jobs=-1)
 
-    # ---START MLFLOW LOGGING---
     with mlflow.start_run(run_name="isolation_forest_model"):
 
         model.fit(data)

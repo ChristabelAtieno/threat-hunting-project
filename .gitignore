@@ -8,6 +8,8 @@ mlflow.db
 processed_parquet/
 main1.py
 .vscode
+engineered_parquet/
+scripts/engineer_features.py
 
 
 

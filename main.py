@@ -1,42 +1,43 @@
-import mlflow
-import pandas as pd
-from scripts.data_loading import load_logs
-from scripts.engineer_features import (
-    clean_parquet_files, 
-    engineer_features, 
-    encoding_features,
-    prepare_dataset
-)
+from pathlib import Path
+from scripts.load_data import load_data
+from scripts.features_engineer import data_preprocessing
 from scripts.train_models import isolation_forest_model
+import dask.dataframe as dd
+import mlflow
 
-# ===== PIPELINE EXECUTION =====
+project_root = Path(__file__).resolve().parent
+DOCUMENTS_DIR = project_root / "extracted" / "flaws_cloudtrail_logs"
+PROCESSED_DIR = project_root / "processed_parquet"
+ENGINEERED_DIR = project_root / "engineered_parquet"
+
 if __name__ == "__main__":
 
     mlflow.set_experiment("cloudtrail_anomaly_detection")
 
-    print("Step 1: Loading raw CloudTrail logs...")
-    raw_dir = load_logs("notebook/cloudtrail_parquet")
+    print("--- Loading and Normalizing Raw Logs ---")
+    raw_data = load_data(DOCUMENTS_DIR, PROCESSED_DIR)
 
-    print("\nStep 2: Cleaning parquet files...")
-    clean_parquet_files(raw_dir, "notebook/clean_cloudtrail_parquet")
+    print("--- Engineering Features ---")
+    data_preprocessing(raw_data, ENGINEERED_DIR)
 
-    print("\nStep 3: Engineering features...")
-    engineer_features("notebook/clean_cloudtrail_parquet", "notebook/features_parquet")
+    print("--- Loading Engineered Features ---")
+    ddf = dd.read_parquet(ENGINEERED_DIR / "*.parquet")
 
-    print("\nStep 4: Encoding categorical features...")
-    encoding_features("notebook/features_parquet", "notebook/clean_features_parquet")
+    print(f"Final dataset shape: {len(ddf.columns)} columns")
+    print(ddf.head())
 
-    print("\nStep 5: Preparing dataset and scaling...")
-    df_engineered, df_scaled = prepare_dataset("notebook/clean_features_parquet")
+    print("--- Training Isolation Forest Model ---")
+    model, scores, preds = isolation_forest_model(ddf)
 
-    print("\nStep 6: Training Isolation Forest model...")
-    model, scores, predictions = isolation_forest_model(df_scaled)
+    print("Model training complete. Anomaly scores and predictions are ready for analysis.")
+    print(f"Sample anomaly scores: {scores[:5]}")
+    print(f"Sample predictions: {preds[:5]}")
+    print(f"Total anomalies detected: {(preds == -1).sum()}")
 
     print("\n===== RESULTS =====")
-    print(f"Engineered DataFrame shape: {df_engineered.shape}")
-    print(f"Scaled Array shape: {df_scaled.shape}")
+    print(f"Engineered DataFrame shape: {ddf.shape}")
     print(f"Model anomaly scores shape: {scores.shape}")
-    print(f"Predictions shape: {predictions.shape}")
-    print(f"\nAnomalies detected: {sum(predictions == -1)} out of {len(predictions)}")
-    print(f"Anomaly percentage: {100 * sum(predictions == -1) / len(predictions):.2f}%")
+    print(f"Predictions shape: {preds.shape}")
+    print(f"\nAnomalies detected: {sum(preds == -1)} out of {len(preds)}")
+    print(f"Anomaly percentage: {100 * sum(preds == -1) / len(preds):.2f}%")
 
