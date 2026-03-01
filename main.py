@@ -12,13 +12,19 @@ ENGINEERED_DIR = project_root / "engineered_parquet"
 
 if __name__ == "__main__":
 
-    mlflow.set_experiment("cloudtrail_anomaly_detection")
+    mlflow.set_experiment("Log Anomaly Detection with Isolation Forest")
 
     print("--- Loading and Normalizing Raw Logs ---")
-    raw_data = load_data(DOCUMENTS_DIR, PROCESSED_DIR)
+    if not PROCESSED_DIR.exists():
+        raw_data = load_data(DOCUMENTS_DIR, PROCESSED_DIR)
+    else:
+        print(f"Processed data already exists in {PROCESSED_DIR}. Skip the loading step.")
 
     print("--- Engineering Features ---")
-    data_preprocessing(raw_data, ENGINEERED_DIR)
+    if not ENGINEERED_DIR.exists():
+        data_preprocessing(raw_data, ENGINEERED_DIR)
+    else:
+        print(f"Engineered data already exists in {ENGINEERED_DIR}. Skip the feature engineering step.")
 
     print("--- Loading Engineered Features ---")
     ddf = dd.read_parquet(ENGINEERED_DIR / "*.parquet")
@@ -33,10 +39,6 @@ if __name__ == "__main__":
     print(f"Sample anomaly scores: {scores[:5]}")
     print(f"Sample predictions: {preds[:5]}")
     print(f"Total anomalies detected: {(preds == -1).sum()}")
-
-    print("\n===== RESULTS =====")
-    print(f"Engineered DataFrame shape: {ddf.shape}")
-    print(f"Model anomaly scores shape: {scores.shape}")
     print(f"Predictions shape: {preds.shape}")
     print(f"\nAnomalies detected: {sum(preds == -1)} out of {len(preds)}")
     print(f"Anomaly percentage: {100 * sum(preds == -1) / len(preds):.2f}%")
