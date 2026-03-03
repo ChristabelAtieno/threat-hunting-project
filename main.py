@@ -12,8 +12,6 @@ ENGINEERED_DIR = project_root / "engineered_parquet"
 
 if __name__ == "__main__":
 
-    mlflow.set_experiment("Log Anomaly Detection with Isolation Forest")
-
     print("--- Loading and Normalizing Raw Logs ---")
     if not PROCESSED_DIR.exists():
         raw_data = load_data(DOCUMENTS_DIR, PROCESSED_DIR)
