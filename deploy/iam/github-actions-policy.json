@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadCloudTrailEvents",
+      "Effect": "Allow",
+      "Action": ["cloudtrail:LookupEvents", "ec2:DescribeRegions"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ListStore",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::threat-hunt-demo-bucket",
+      "Condition": {"StringLike": {"s3:prefix": ["threat-hunt/*"]}}
+    },
+    {
+      "Sid": "ReadWriteStore",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::threat-hunt-demo-bucket/threat-hunt/*"
+    }
+  ]
+}
