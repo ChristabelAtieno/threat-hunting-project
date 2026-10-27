@@ -1,0 +1,95 @@
+# Retrains weekly on the last 30 days of CloudTrail, with hyperparameter tuning and analyst verdicts.
+# The new version becomes champion only if it passes the evaluation gate; otherwise the current
+# champion keeps scoring. The registry (mlflow.db) and model artifacts live in the private S3 bucket.
+name: retrain
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of history (max 90)"
+        default: "30"
+      tune:
+        description: "Hyperparameter trials (0 = defaults)"
+        default: "12"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: retrain
+  cancel-in-progress: false
+
+env:
+  STORE: s3://${{ vars.THREAT_HUNT_BUCKET }}/threat-hunt
+  MLFLOW_TRACKING_URI: sqlite:///mlstore/mlflow.db
+  MLFLOW_ARTIFACT_LOCATION: s3://${{ vars.THREAT_HUNT_BUCKET }}/threat-hunt/mlartifacts
+  MLFLOW_EXPERIMENT_NAME: scheduled_retrain
+  MLFLOW_DISABLE_AGENT_HINT: "1"
+  VERDICTS_FILE: verdicts.csv
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+
+      - name: AWS credentials (OIDC role)
+        if: vars.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-duration-seconds: 10800
+      - name: AWS credentials (access keys)
+        if: vars.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Fetch model registry and verdicts
+        run: |
+          mkdir -p mlstore
+          aws s3 cp "$STORE/mlflow.db" mlstore/mlflow.db --only-show-errors || echo "No registry yet; this run creates it"
+          aws s3 cp "$STORE/verdicts.csv" verdicts.csv --only-show-errors || echo "No analyst verdicts yet"
+
+      - name: Train, evaluate and promote if better
+        run: |
+          python main.py train --source lookup --days "${{ inputs.days || '30' }}" \
+            --tune "${{ inputs.tune || '12' }}" > train.log 2>&1 \
+            || { echo "::error::Training failed; log in $STORE/logs/train/"; exit 1; }
+
+      - name: Save registry, weak labels, snapshot and log
+        if: always()
+        run: |
+          stamp=$(date -u +%Y-%m-%d)-${{ github.run_id }}
+          [ -f train.log ] && aws s3 cp train.log "$STORE/logs/train/$stamp.log" --only-show-errors
+          if [ "${{ job.status }}" = "success" ]; then
+            aws s3 cp mlstore/mlflow.db "$STORE/mlflow.db" --only-show-errors
+            aws s3 sync weak_labels "$STORE/weak_labels" --only-show-errors
+            aws s3 cp processed_parquet_lookup/events.parquet "$STORE/snapshots/$stamp.parquet" --only-show-errors
+          fi
+          python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import mlflow
+          c = mlflow.MlflowClient()
+          try:
+              m = c.get_registered_model('isolation_forest_model')
+          except Exception:
+              print("No model registered."); raise SystemExit
+          latest = max(int(v.version) for v in c.search_model_versions("name='isolation_forest_model'"))
+          champion = m.aliases.get('champion')
+          print(f"### Retrain\nNew version: {latest}  \nChampion: {champion}  \n"
+                + ("Promoted." if str(champion) == str(latest) else "**Not promoted** (failed the evaluation gate); the previous champion keeps scoring."))
+          EOF

@@ -1,0 +1,98 @@
+# Scores new CloudTrail events every 15 minutes with the champion model.
+#
+# This repo is public, so workflow logs and artifacts are readable by anyone. Incidents (ARNs, IPs,
+# account IDs) therefore go only to the private S3 bucket; the log shows counts only.
+# A high/critical incident fails the run, and GitHub emails the owner of the schedule.
+name: score
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # GitHub may start scheduled runs late; the state file makes that safe
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Look-back window in hours"
+        default: "1"
+
+permissions:
+  contents: read
+  id-token: write   # for the OIDC role (vars.AWS_ROLE_ARN)
+
+concurrency:
+  group: score
+  cancel-in-progress: false
+
+env:
+  STORE: s3://${{ vars.THREAT_HUNT_BUCKET }}/threat-hunt
+  MLFLOW_TRACKING_URI: sqlite:///mlstore/mlflow.db
+  MLFLOW_DISABLE_AGENT_HINT: "1"
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+
+      - name: AWS credentials (OIDC role)
+        if: vars.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: AWS credentials (access keys)
+        if: vars.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Fetch model registry and scoring state
+        run: |
+          mkdir -p mlstore
+          if ! aws s3 cp "$STORE/mlflow.db" mlstore/mlflow.db --only-show-errors; then
+            echo "::error::No model registry in $STORE yet. Run the retrain workflow first."
+            exit 1
+          fi
+          aws s3 cp "$STORE/state/score-state.json" score-state.json --only-show-errors || echo "No state yet; first run"
+
+      - name: Score
+        id: score
+        run: |
+          set +e
+          python main.py score --hours "${{ inputs.hours || '1' }}" --state-file score-state.json \
+            --output incidents.jsonl --fail-on-high > score.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" = 0 ] || [ "$code" = 2 ] || { echo "::error::Scoring failed (exit $code); log in $STORE/logs/"; exit 0; }
+
+      - name: Save incidents, log and state
+        if: always()
+        run: |
+          stamp=$(date -u +%Y/%m/%d/%H%M%S)-${{ github.run_id }}
+          [ -s incidents.jsonl ] && aws s3 cp incidents.jsonl "$STORE/incidents/$stamp.jsonl" --only-show-errors
+          [ -f score.log ] && aws s3 cp score.log "$STORE/logs/score/$stamp.log" --only-show-errors
+          [ -f score-state.json ] && aws s3 cp score-state.json "$STORE/state/score-state.json" --only-show-errors
+          {
+            echo "### Scoring run"
+            if [ -s incidents.jsonl ]; then
+              echo "Incidents by severity:"
+              jq -r .severity incidents.jsonl | sort | uniq -c | sed 's/^/    /'
+              echo; echo "Details: \`aws s3 cp $STORE/incidents/$stamp.jsonl -\`"
+            else
+              echo "No incidents."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on high/critical incidents
+        if: steps.score.outputs.exit_code != '0'
+        run: |
+          echo "::error::High/critical incidents or a scoring failure. See $STORE/incidents/ and $STORE/logs/score/"
+          exit 1
