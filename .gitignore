@@ -17,3 +17,5 @@ data/
 /venv/
 weak_labels/
 verdicts.csv
+
+notebook/
