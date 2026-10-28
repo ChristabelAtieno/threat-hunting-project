@@ -34,7 +34,7 @@ env:
 jobs:
   retrain:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,7 +50,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-          role-duration-seconds: 10800
+          role-duration-seconds: 3600   # the role default maximum
       - name: AWS credentials (access keys)
         if: vars.AWS_ROLE_ARN == ''
         uses: aws-actions/configure-aws-credentials@v4
